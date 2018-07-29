@@ -24,6 +24,7 @@ locale.setlocale(locale.LC_ALL, '')
 
 # MODE = 'WGAN-GP'
 MODE = str(sys.argv[1])
+MOM = float(sys.argv[2])
 print 'MODE: ' + MODE
 # Download CIFAR-10 (Python version) at
 # https://www.cs.toronto.edu/~kriz/cifar.html and fill in the path to the
@@ -50,7 +51,7 @@ if MODE == 'WGAN-GP':
     N_CRITIC = 5 # Critic steps per generator steps
 else:
     N_CRITIC = 1
-INCEPTION_FREQUENCY = 25 # How frequently to calculate Inception score
+INCEPTION_FREQUENCY = 250 # How frequently to calculate Inception score
 
 CONDITIONAL = True # Whether to train a conditional or unconditional model
 ACGAN = True # If CONDITIONAL, whether to use ACGAN or "vanilla" conditioning
@@ -311,7 +312,7 @@ with tf.Session() as session:
 
 
     gen_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=0., beta2=0.9)
-    disc_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=-0.5, beta2=0.9)
+    disc_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOM, beta2=0.9)
     gen_gv = gen_opt.compute_gradients(gen_cost, var_list=lib.params_with_name('Generator'))
     disc_gv = disc_opt.compute_gradients(disc_cost, var_list=disc_params)
     gen_train_op = gen_opt.apply_gradients(gen_gv)
