@@ -11,7 +11,7 @@ import tflib.ops.batchnorm
 import tflib.save_images
 import tflib.cifar10
 import tflib.inception_score
-import tflib.plot
+# import tflib.plot
 
 import numpy as np
 import tensorflow as tf
@@ -327,10 +327,10 @@ with tf.Session() as session:
     fixed_noise = tf.constant(np.random.normal(size=(100, 128)).astype('float32'))
     fixed_labels = tf.constant(np.array([0,1,2,3,4,5,6,7,8,9]*10,dtype='int32'))
     fixed_noise_samples = Generator(100, fixed_labels, noise=fixed_noise)
-    def generate_image(frame, true_dist):
-        samples = session.run(fixed_noise_samples)
-        samples = ((samples+1.)*(255./2)).astype('int32')
-        lib.save_images.save_images(samples.reshape((100, 3, 32, 32)), 'samples_{}.png'.format(frame))
+    # def generate_image(frame, true_dist):
+    #     samples = session.run(fixed_noise_samples)
+    #     samples = ((samples+1.)*(255./2)).astype('int32')
+    #     lib.save_images.save_images(samples.reshape((100, 3, 32, 32)), 'samples_{}.png'.format(frame))
 
     # Function for calculating inception score
     fake_labels_100 = tf.cast(tf.random_uniform([100])*10, tf.int32)
