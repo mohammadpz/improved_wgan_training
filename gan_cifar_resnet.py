@@ -311,7 +311,7 @@ with tf.Session() as session:
 
 
     gen_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=0., beta2=0.9)
-    disc_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=0., beta2=0.9)
+    disc_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=-0.5, beta2=0.9)
     gen_gv = gen_opt.compute_gradients(gen_cost, var_list=lib.params_with_name('Generator'))
     disc_gv = disc_opt.compute_gradients(disc_cost, var_list=disc_params)
     gen_train_op = gen_opt.apply_gradients(gen_gv)
