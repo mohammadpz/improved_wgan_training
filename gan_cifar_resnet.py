@@ -22,6 +22,7 @@ import functools
 import locale
 locale.setlocale(locale.LC_ALL, '')
 
+MODE = 'WGAN-GP'
 # Download CIFAR-10 (Python version) at
 # https://www.cs.toronto.edu/~kriz/cifar.html and fill in the path to the
 # extracted files here!
@@ -43,8 +44,11 @@ NORMALIZATION_D = False # Use batchnorm (or layernorm) in critic?
 OUTPUT_DIM = 3072 # Number of pixels in CIFAR10 (32*32*3)
 LR = 2e-4 # Initial learning rate
 DECAY = True # Whether to decay LR over learning
-N_CRITIC = 5 # Critic steps per generator steps
-INCEPTION_FREQUENCY = 1000 # How frequently to calculate Inception score
+if MODE == 'WGAN-GP':
+    N_CRITIC = 5 # Critic steps per generator steps
+else:
+    N_CRITIC = 1
+INCEPTION_FREQUENCY = 250 # How frequently to calculate Inception score
 
 CONDITIONAL = True # Whether to train a conditional or unconditional model
 ACGAN = True # If CONDITIONAL, whether to use ACGAN or "vanilla" conditioning
@@ -172,11 +176,9 @@ def Discriminator(inputs, labels):
     output = tf.reduce_mean(output, axis=[2,3])
     output_wgan = lib.ops.linear.Linear('Discriminator.Output', DIM_D, 1, output)
     output_wgan = tf.reshape(output_wgan, [-1])
-    if CONDITIONAL and ACGAN:
-        output_acgan = lib.ops.linear.Linear('Discriminator.ACGANOutput', DIM_D, 10, output)
-        return output_wgan, output_acgan
-    else:
-        return output_wgan, None
+    # if CONDITIONAL and ACGAN:
+    output_acgan = lib.ops.linear.Linear('Discriminator.ACGANOutput', DIM_D, 10, output)
+    return output_wgan, output_acgan
 
 with tf.Session() as session:
 
@@ -219,62 +221,64 @@ with tf.Session() as session:
             disc_all, disc_all_acgan = Discriminator(real_and_fake_data, real_and_fake_labels)
             disc_real = disc_all[:BATCH_SIZE/len(DEVICES_A)]
             disc_fake = disc_all[BATCH_SIZE/len(DEVICES_A):]
-            disc_costs.append(tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real))
-            if CONDITIONAL and ACGAN:
-                disc_acgan_costs.append(tf.reduce_mean(
-                    tf.nn.sparse_softmax_cross_entropy_with_logits(logits=disc_all_acgan[:BATCH_SIZE/len(DEVICES_A)], labels=real_and_fake_labels[:BATCH_SIZE/len(DEVICES_A)])
-                ))
-                disc_acgan_accs.append(tf.reduce_mean(
-                    tf.cast(
-                        tf.equal(
-                            tf.to_int32(tf.argmax(disc_all_acgan[:BATCH_SIZE/len(DEVICES_A)], dimension=1)),
-                            real_and_fake_labels[:BATCH_SIZE/len(DEVICES_A)]
-                        ),
-                        tf.float32
-                    )
-                ))
-                disc_acgan_fake_accs.append(tf.reduce_mean(
-                    tf.cast(
-                        tf.equal(
-                            tf.to_int32(tf.argmax(disc_all_acgan[BATCH_SIZE/len(DEVICES_A):], dimension=1)),
-                            real_and_fake_labels[BATCH_SIZE/len(DEVICES_A):]
-                        ),
-                        tf.float32
-                    )
-                ))
+            if MODE == 'WGAN-GP':
+                disc_costs.append(tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real))
+            else:
+                tmp1 =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.zeros_like(disc_fake)))
+                tmp1 += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real, tf.ones_like(disc_real)))
+                tmp1 /= 2.
+                disc_costs.append(tmp1)
+            # if CONDITIONAL and ACGAN:
+            disc_acgan_costs.append(tf.reduce_mean(
+                tf.nn.sparse_softmax_cross_entropy_with_logits(logits=disc_all_acgan[:BATCH_SIZE/len(DEVICES_A)], labels=real_and_fake_labels[:BATCH_SIZE/len(DEVICES_A)])
+            ))
+            disc_acgan_accs.append(tf.reduce_mean(
+                tf.cast(
+                    tf.equal(
+                        tf.to_int32(tf.argmax(disc_all_acgan[:BATCH_SIZE/len(DEVICES_A)], dimension=1)),
+                        real_and_fake_labels[:BATCH_SIZE/len(DEVICES_A)]
+                    ),
+                    tf.float32
+                )
+            ))
+            disc_acgan_fake_accs.append(tf.reduce_mean(
+                tf.cast(
+                    tf.equal(
+                        tf.to_int32(tf.argmax(disc_all_acgan[BATCH_SIZE/len(DEVICES_A):], dimension=1)),
+                        real_and_fake_labels[BATCH_SIZE/len(DEVICES_A):]
+                    ),
+                    tf.float32
+                )
+            ))
 
 
-    for i, device in enumerate(DEVICES_B):
-        with tf.device(device):
-            real_data = tf.concat([all_real_data_splits[i], all_real_data_splits[len(DEVICES_A)+i]], axis=0)
-            fake_data = tf.concat([fake_data_splits[i], fake_data_splits[len(DEVICES_A)+i]], axis=0)
-            labels = tf.concat([
-                labels_splits[i], 
-                labels_splits[len(DEVICES_A)+i],
-            ], axis=0)
-            alpha = tf.random_uniform(
-                shape=[BATCH_SIZE/len(DEVICES_A),1], 
-                minval=0.,
-                maxval=1.
-            )
-            differences = fake_data - real_data
-            interpolates = real_data + (alpha*differences)
-            gradients = tf.gradients(Discriminator(interpolates, labels)[0], [interpolates])[0]
-            slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
-            gradient_penalty = 10*tf.reduce_mean((slopes-1.)**2)
-            disc_costs.append(gradient_penalty)
+    if MODE == 'WGAN-GP':
+        for i, device in enumerate(DEVICES_B):
+            with tf.device(device):
+                real_data = tf.concat([all_real_data_splits[i], all_real_data_splits[len(DEVICES_A)+i]], axis=0)
+                fake_data = tf.concat([fake_data_splits[i], fake_data_splits[len(DEVICES_A)+i]], axis=0)
+                labels = tf.concat([
+                    labels_splits[i], 
+                    labels_splits[len(DEVICES_A)+i],
+                ], axis=0)
+                alpha = tf.random_uniform(
+                    shape=[BATCH_SIZE/len(DEVICES_A),1], 
+                    minval=0.,
+                    maxval=1.
+                )
+                differences = fake_data - real_data
+                interpolates = real_data + (alpha*differences)
+                gradients = tf.gradients(Discriminator(interpolates, labels)[0], [interpolates])[0]
+                slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1]))
+                gradient_penalty = 10*tf.reduce_mean((slopes-1.)**2)
+                disc_costs.append(gradient_penalty)
 
     disc_wgan = tf.add_n(disc_costs) / len(DEVICES_A)
-    if CONDITIONAL and ACGAN:
-        disc_acgan = tf.add_n(disc_acgan_costs) / len(DEVICES_A)
-        disc_acgan_acc = tf.add_n(disc_acgan_accs) / len(DEVICES_A)
-        disc_acgan_fake_acc = tf.add_n(disc_acgan_fake_accs) / len(DEVICES_A)
-        disc_cost = disc_wgan + (ACGAN_SCALE*disc_acgan)
-    else:
-        disc_acgan = tf.constant(0.)
-        disc_acgan_acc = tf.constant(0.)
-        disc_acgan_fake_acc = tf.constant(0.)
-        disc_cost = disc_wgan
+    # if CONDITIONAL and ACGAN:
+    disc_acgan = tf.add_n(disc_acgan_costs) / len(DEVICES_A)
+    disc_acgan_acc = tf.add_n(disc_acgan_accs) / len(DEVICES_A)
+    disc_acgan_fake_acc = tf.add_n(disc_acgan_fake_accs) / len(DEVICES_A)
+    disc_cost = disc_wgan + (ACGAN_SCALE*disc_acgan)
 
     disc_params = lib.params_with_name('Discriminator.')
 
@@ -289,17 +293,19 @@ with tf.Session() as session:
         with tf.device(device):
             n_samples = GEN_BS_MULTIPLE * BATCH_SIZE / len(DEVICES)
             fake_labels = tf.cast(tf.random_uniform([n_samples])*10, tf.int32)
-            if CONDITIONAL and ACGAN:
-                disc_fake, disc_fake_acgan = Discriminator(Generator(n_samples,fake_labels), fake_labels)
+            # if CONDITIONAL and ACGAN:
+            disc_fake, disc_fake_acgan = Discriminator(Generator(n_samples,fake_labels), fake_labels)
+            if MODE == 'WGAN-GP':
                 gen_costs.append(-tf.reduce_mean(disc_fake))
-                gen_acgan_costs.append(tf.reduce_mean(
-                    tf.nn.sparse_softmax_cross_entropy_with_logits(logits=disc_fake_acgan, labels=fake_labels)
-                ))
+            elif 'SAT' in MODE:
+                gen_costs.append(-tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.zeros_like(disc_fake))))
             else:
-                gen_costs.append(-tf.reduce_mean(Discriminator(Generator(n_samples, fake_labels), fake_labels)[0]))
+                gen_costs.append(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.ones_like(disc_fake))))
+            gen_acgan_costs.append(tf.reduce_mean(
+                tf.nn.sparse_softmax_cross_entropy_with_logits(logits=disc_fake_acgan, labels=fake_labels)
+            ))
     gen_cost = (tf.add_n(gen_costs) / len(DEVICES))
-    if CONDITIONAL and ACGAN:
-        gen_cost += (ACGAN_SCALE_G*(tf.add_n(gen_acgan_costs) / len(DEVICES)))
+    gen_cost += (ACGAN_SCALE_G*(tf.add_n(gen_acgan_costs) / len(DEVICES)))
 
 
     gen_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=0., beta2=0.9)
@@ -338,25 +344,25 @@ with tf.Session() as session:
                 yield images,_labels
 
 
-    for name,grads_and_vars in [('G', gen_gv), ('D', disc_gv)]:
-        print "{} Params:".format(name)
-        total_param_count = 0
-        for g, v in grads_and_vars:
-            shape = v.get_shape()
-            shape_str = ",".join([str(x) for x in v.get_shape()])
+    # for name,grads_and_vars in [('G', gen_gv), ('D', disc_gv)]:
+    #     print "{} Params:".format(name)
+    #     total_param_count = 0
+    #     for g, v in grads_and_vars:
+    #         shape = v.get_shape()
+    #         shape_str = ",".join([str(x) for x in v.get_shape()])
 
-            param_count = 1
-            for dim in shape:
-                param_count *= int(dim)
-            total_param_count += param_count
+    #         param_count = 1
+    #         for dim in shape:
+    #             param_count *= int(dim)
+    #         total_param_count += param_count
 
-            if g == None:
-                print "\t{} ({}) [no grad!]".format(v.name, shape_str)
-            else:
-                print "\t{} ({})".format(v.name, shape_str)
-        print "Total param count: {}".format(
-            locale.format("%d", total_param_count, grouping=True)
-        )
+    #         if g == None:
+    #             print "\t{} ({}) [no grad!]".format(v.name, shape_str)
+    #         else:
+    #             print "\t{} ({})".format(v.name, shape_str)
+    #     print "Total param count: {}".format(
+    #         locale.format("%d", total_param_count, grouping=True)
+    #     )
 
     session.run(tf.initialize_all_variables())
 
@@ -369,36 +375,35 @@ with tf.Session() as session:
             _ = session.run([gen_train_op], feed_dict={_iteration:iteration})
 
         for i in xrange(N_CRITIC):
-            _data,_labels = gen.next()
-            if CONDITIONAL and ACGAN:
-                _disc_cost, _disc_wgan, _disc_acgan, _disc_acgan_acc, _disc_acgan_fake_acc, _ = session.run([disc_cost, disc_wgan, disc_acgan, disc_acgan_acc, disc_acgan_fake_acc, disc_train_op], feed_dict={all_real_data_int: _data, all_real_labels:_labels, _iteration:iteration})
-            else:
-                _disc_cost, _ = session.run([disc_cost, disc_train_op], feed_dict={all_real_data_int: _data, all_real_labels:_labels, _iteration:iteration})
+            _data, _labels = gen.next()
+            _disc_cost, _disc_wgan, _disc_acgan, _disc_acgan_acc, _disc_acgan_fake_acc, _ = session.run([disc_cost, disc_wgan, disc_acgan, disc_acgan_acc, disc_acgan_fake_acc, disc_train_op], feed_dict={all_real_data_int: _data, all_real_labels:_labels, _iteration:iteration})
+        # lib.plot.plot('cost', _disc_cost)
+        # if CONDITIONAL and ACGAN:
+        #     lib.plot.plot('wgan', _disc_wgan)
+        #     lib.plot.plot('acgan', _disc_acgan)
+        #     lib.plot.plot('acc_real', _disc_acgan_acc)
+        #     lib.plot.plot('acc_fake', _disc_acgan_fake_acc)
+        # lib.plot.plot('time', time.time() - start_time)
 
-        lib.plot.plot('cost', _disc_cost)
-        if CONDITIONAL and ACGAN:
-            lib.plot.plot('wgan', _disc_wgan)
-            lib.plot.plot('acgan', _disc_acgan)
-            lib.plot.plot('acc_real', _disc_acgan_acc)
-            lib.plot.plot('acc_fake', _disc_acgan_fake_acc)
-        lib.plot.plot('time', time.time() - start_time)
+        print iteration
 
-        if iteration % INCEPTION_FREQUENCY == INCEPTION_FREQUENCY-1:
+        if iteration % INCEPTION_FREQUENCY == INCEPTION_FREQUENCY - 1:
             inception_score = get_inception_score(50000)
-            lib.plot.plot('inception_50k', inception_score[0])
-            lib.plot.plot('inception_50k_std', inception_score[1])
+            print 'inception: ' + str(inception_score[0])
+            # lib.plot.plot('inception_50k', inception_score[0])
+            # lib.plot.plot('inception_50k_std', inception_score[1])
 
         # Calculate dev loss and generate samples every 100 iters
-        if iteration % 100 == 99:
-            dev_disc_costs = []
-            for images,_labels in dev_gen():
-                _dev_disc_cost = session.run([disc_cost], feed_dict={all_real_data_int: images,all_real_labels:_labels})
-                dev_disc_costs.append(_dev_disc_cost)
-            lib.plot.plot('dev_cost', np.mean(dev_disc_costs))
+        # if iteration % 100 == 99:
+        #     dev_disc_costs = []
+        #     for images,_labels in dev_gen():
+        #         _dev_disc_cost = session.run([disc_cost], feed_dict={all_real_data_int: images,all_real_labels:_labels})
+        #         dev_disc_costs.append(_dev_disc_cost)
+        #     lib.plot.plot('dev_cost', np.mean(dev_disc_costs))
 
-            generate_image(iteration, _data)
+        #     generate_image(iteration, _data)
 
-        if (iteration < 500) or (iteration % 1000 == 999):
-            lib.plot.flush()
+        # if (iteration < 500) or (iteration % 1000 == 999):
+        #     lib.plot.flush()
 
-        lib.plot.tick()
+        # lib.plot.tick()
