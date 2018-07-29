@@ -226,8 +226,8 @@ with tf.Session() as session:
             if MODE == 'WGAN-GP':
                 disc_costs.append(tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real))
             else:
-                tmp1 =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.zeros_like(disc_fake)))
-                tmp1 += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_real, tf.ones_like(disc_real)))
+                tmp1 =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake, labels=tf.zeros_like(disc_fake)))
+                tmp1 += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=ddisc_real, labels=tf.ones_like(disc_real)))
                 tmp1 /= 2.
                 disc_costs.append(tmp1)
             # if CONDITIONAL and ACGAN:
@@ -300,9 +300,9 @@ with tf.Session() as session:
             if MODE == 'WGAN-GP':
                 gen_costs.append(-tf.reduce_mean(disc_fake))
             elif 'SAT' in MODE:
-                gen_costs.append(-tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.zeros_like(disc_fake))))
+                gen_costs.append(-tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake, labels=tf.zeros_like(disc_fake))))
             else:
-                gen_costs.append(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(disc_fake, tf.ones_like(disc_fake))))
+                gen_costs.append(tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake, labels=tf.ones_like(disc_fake))))
             gen_acgan_costs.append(tf.reduce_mean(
                 tf.nn.sparse_softmax_cross_entropy_with_logits(logits=disc_fake_acgan, labels=fake_labels)
             ))
