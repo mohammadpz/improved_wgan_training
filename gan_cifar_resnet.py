@@ -310,9 +310,13 @@ with tf.Session() as session:
     gen_cost = (tf.add_n(gen_costs) / len(DEVICES))
     gen_cost += (ACGAN_SCALE_G*(tf.add_n(gen_acgan_costs) / len(DEVICES)))
 
-
     gen_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=0., beta2=0.9)
-    disc_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOM, beta2=0.9)
+    if MOM == -0.5:
+        disc_opt = tf.train.AdamOptimizer(learning_rate=LR*decay / 1.37, beta1=-0.37, beta2=0.9)
+    elif MOM == -0.2:
+        disc_opt = tf.train.AdamOptimizer(learning_rate=LR*decay / 1.17, beta1=-0.17, beta2=0.9)
+    else:
+        disc_opt = tf.train.AdamOptimizer(learning_rate=LR*decay, beta1=MOM, beta2=0.9)
     gen_gv = gen_opt.compute_gradients(gen_cost, var_list=lib.params_with_name('Generator'))
     disc_gv = disc_opt.compute_gradients(disc_cost, var_list=disc_params)
     gen_train_op = gen_opt.apply_gradients(gen_gv)
