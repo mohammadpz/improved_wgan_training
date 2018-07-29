@@ -227,7 +227,7 @@ with tf.Session() as session:
                 disc_costs.append(tf.reduce_mean(disc_fake) - tf.reduce_mean(disc_real))
             else:
                 tmp1 =  tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_fake, labels=tf.zeros_like(disc_fake)))
-                tmp1 += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=ddisc_real, labels=tf.ones_like(disc_real)))
+                tmp1 += tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=disc_real, labels=tf.ones_like(disc_real)))
                 tmp1 /= 2.
                 disc_costs.append(tmp1)
             # if CONDITIONAL and ACGAN:
