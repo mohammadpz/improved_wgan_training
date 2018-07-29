@@ -48,7 +48,7 @@ if MODE == 'WGAN-GP':
     N_CRITIC = 5 # Critic steps per generator steps
 else:
     N_CRITIC = 1
-INCEPTION_FREQUENCY = 250 # How frequently to calculate Inception score
+INCEPTION_FREQUENCY = 25 # How frequently to calculate Inception score
 
 CONDITIONAL = True # Whether to train a conditional or unconditional model
 ACGAN = True # If CONDITIONAL, whether to use ACGAN or "vanilla" conditioning
@@ -387,7 +387,7 @@ with tf.Session() as session:
 
         print iteration
 
-        if iteration % INCEPTION_FREQUENCY == INCEPTION_FREQUENCY - 1:
+        if iteration % INCEPTION_FREQUENCY == 0:
             inception_score = get_inception_score(50000)
             print 'inception: ' + str(inception_score[0])
             # lib.plot.plot('inception_50k', inception_score[0])
