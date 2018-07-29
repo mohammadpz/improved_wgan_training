@@ -22,7 +22,9 @@ import functools
 import locale
 locale.setlocale(locale.LC_ALL, '')
 
-MODE = 'WGAN-GP'
+# MODE = 'WGAN-GP'
+MODE = str(sys.argv[1])
+print 'MODE: ' + MODE
 # Download CIFAR-10 (Python version) at
 # https://www.cs.toronto.edu/~kriz/cifar.html and fill in the path to the
 # extracted files here!
@@ -388,7 +390,7 @@ with tf.Session() as session:
         print iteration
 
         if iteration % INCEPTION_FREQUENCY == 0:
-            inception_score = get_inception_score(50000)
+            inception_score = get_inception_score(20000)
             print 'inception: ' + str(inception_score[0])
             # lib.plot.plot('inception_50k', inception_score[0])
             # lib.plot.plot('inception_50k_std', inception_score[1])
